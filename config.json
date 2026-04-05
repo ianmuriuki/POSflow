@@ -1,0 +1,10 @@
+{
+  "business_name": "My Business",
+  "currency": "KES",
+  "receipt_footer": "Thank you for your business!",
+  "printer_port": "auto",
+  "session_timeout_minutes": 30,
+  "db_path": "posflow.db",
+  "log_level": "INFO",
+  "app_version": "1.0.0"
+}

@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Database (never commit the live DB — only migrations)
+posflow.db
+*.db-shm
+*.db-wal
+
+# Backups
+backups/
+
+# PyInstaller
+*.spec
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Environment config (contains secrets)
+.env
+
+# Alembic (keep versions, ignore cache)
+migrations/__pycache__/
+receipt_*.pdf
