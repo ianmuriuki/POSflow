@@ -229,6 +229,24 @@ class Sidebar(QFrame):
         lo.addSpacing(8)
 
         # ── Logout ────────────────────────────────────────────
+        # ── Built by ──────────────────────────────────────────
+        built_by = QLabel("Built & supported by")
+        built_by.setStyleSheet("color: rgba(255,255,255,0.25); font-size:10px; background:transparent;")
+        built_by.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        dev_name = QLabel("Ian Muriuki")
+        dev_name.setStyleSheet("color: rgba(255,255,255,0.55); font-size:11px; font-weight:600; background:transparent;")
+        dev_name.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        dev_contact = QLabel("📞 +254 795 953 801")
+        dev_contact.setStyleSheet("color: rgba(255,255,255,0.35); font-size:10px; background:transparent;")
+        dev_contact.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        lo.addWidget(built_by)
+        lo.addWidget(dev_name)
+        lo.addWidget(dev_contact)
+        lo.addSpacing(10)
+
         logout = QPushButton("Sign out")
         logout.setFixedHeight(36)
         logout.setCursor(Qt.CursorShape.PointingHandCursor)

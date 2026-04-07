@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QScrollArea, QStackedWidget, QTableWidget,
     QTableWidgetItem, QHeaderView, QAbstractItemView,
-    QGraphicsDropShadowEffect, QDateEdit, QComboBox, QSizePolicy
+    QGraphicsDropShadowEffect, QDateEdit, QComboBox, QSizePolicy, QFileDialog
 )
 from PyQt6.QtCore import Qt, QTimer, QDate
 from PyQt6.QtGui import QColor, QFont
@@ -495,10 +495,8 @@ class DailyReport(QWidget):
 
             doc.build(story)
 
-            from PyQt6.QtWidgets import QFileDialog
             # toast
             import os
-            from PyQt6.QtWidgets import QLabel
             from PyQt6.QtCore import QTimer
             toast = QLabel(f"  ✓  Saved: {os.path.basename(path)}", self)
             toast.setStyleSheet("background:#059669; color:white; border-radius:9px; padding:12px 20px; font-size:13px; font-weight:bold;")
@@ -580,6 +578,17 @@ class MonthlyReport(QWidget):
         bar.addStretch()
         for lbl in bar.parentWidget().findChildren(QLabel) if bar.parentWidget() else []:
             lbl.setStyleSheet("font-size:12px; font-weight:bold; color:#374151;")
+
+        dl_btn = QPushButton("⬇  Download PDF")
+        dl_btn.setFixedHeight(40); dl_btn.setFixedWidth(140)
+        dl_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        dl_btn.setStyleSheet("""
+            QPushButton { background:#F3F4F6; color:#374151; border:none;
+                border-radius:9px; font-size:12px; font-weight:bold; }
+            QPushButton:hover { background:#E5E7EB; }
+        """)
+        dl_btn.clicked.connect(self._download_pdf)
+        bar.addWidget(dl_btn)
         layout.addLayout(bar)
 
         # Stat cards
@@ -730,6 +739,194 @@ class MonthlyReport(QWidget):
 
         except Exception as e:
             logger.error("Monthly report error: %s", e)
+
+    def _download_pdf(self):
+        from PyQt6.QtWidgets import QFileDialog
+        month = self.month_combo.currentIndex() + 1
+        year  = int(self.year_combo.currentText())
+        import calendar
+        month_name = calendar.month_name[month]
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Monthly Report",
+            f"monthly_report_{year}_{month:02d}.pdf", "PDF (*.pdf)"
+        )
+        if not path:
+            return
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.units import mm
+            from reportlab.platypus import (
+                SimpleDocTemplate, Paragraph, Spacer, Table,
+                TableStyle, HRFlowable
+            )
+            from reportlab.lib.styles import ParagraphStyle
+            from reportlab.lib.enums import TA_CENTER, TA_RIGHT
+            from reportlab.lib import colors
+            from app.database import get_session
+            from app.models.sale import Sale, SaleItem
+            from app.models.return_transaction import ReturnTransaction
+            from app.models.setting import Setting
+            from app.models.product import Product
+            from app.models.user import User as UModel
+            from collections import defaultdict
+            import sqlalchemy as sa
+
+            with get_session() as session:
+                settings  = {s.key: s.value for s in session.query(Setting).all()}
+                biz       = settings.get("business_name", "My Business")
+
+                sales = (
+                    session.query(Sale)
+                    .filter(
+                        sa.extract("year",  Sale.created_at) == year,
+                        sa.extract("month", Sale.created_at) == month,
+                        Sale.status == "completed"
+                    ).all()
+                )
+                returns = (
+                    session.query(ReturnTransaction)
+                    .filter(
+                        sa.extract("year",  ReturnTransaction.created_at) == year,
+                        sa.extract("month", ReturnTransaction.created_at) == month,
+                    ).all()
+                )
+
+                total_rev    = sum(s.total for s in sales)
+                total_txns   = len(sales)
+                total_ret    = sum(r.refund_amount for r in returns)
+                net_rev      = total_rev - total_ret
+                days_in_mo   = calendar.monthrange(year, month)[1]
+                avg_daily    = total_rev / days_in_mo if days_in_mo else 0
+
+                day_rev = defaultdict(float)
+                day_txn = defaultdict(int)
+                day_ret = defaultdict(float)
+                for s in sales:
+                    day_rev[s.created_at.day] += s.total
+                    day_txn[s.created_at.day] += 1
+                for r in returns:
+                    day_ret[r.created_at.day] += r.refund_amount
+
+                prod_map = defaultdict(lambda: {"cat": "", "qty": 0, "rev": 0})
+                for s in sales:
+                    for it in s.items:
+                        prod = session.get(Product, it.product_id)
+                        prod_map[it.product_name]["cat"]  = prod.category if prod else "—"
+                        prod_map[it.product_name]["qty"] += it.quantity
+                        prod_map[it.product_name]["rev"] += it.line_total
+
+            doc = SimpleDocTemplate(path, pagesize=A4,
+                leftMargin=15*mm, rightMargin=15*mm,
+                topMargin=15*mm, bottomMargin=15*mm)
+
+            H1  = ParagraphStyle("H1",  fontSize=16, fontName="Helvetica-Bold", alignment=TA_CENTER, leading=20)
+            H2  = ParagraphStyle("H2",  fontSize=11, fontName="Helvetica-Bold", leading=14)
+            SUB = ParagraphStyle("sub", fontSize=10, alignment=TA_CENTER, textColor=colors.grey, leading=14)
+            FTR = ParagraphStyle("ftr", fontSize=8,  textColor=colors.grey, alignment=TA_RIGHT)
+
+            story = [
+                Paragraph(biz.upper(), H1),
+                Paragraph(f"Monthly Report — {month_name} {year}", SUB),
+                Spacer(1, 6*mm),
+                HRFlowable(width="100%", thickness=1, color=colors.HexColor("#1A3C6B")),
+                Spacer(1, 4*mm),
+            ]
+
+            # Summary
+            summary = Table(
+                [["Total Revenue", "Transactions", "Returns", "Net Revenue", "Avg / Day"],
+                 [f"KES {total_rev:,.2f}", str(total_txns),
+                  f"KES {total_ret:,.2f}", f"KES {net_rev:,.2f}",
+                  f"KES {avg_daily:,.2f}"]],
+                colWidths=[36*mm]*5
+            )
+            summary.setStyle(TableStyle([
+                ('BACKGROUND',    (0,0), (-1,0), colors.HexColor("#1A3C6B")),
+                ('TEXTCOLOR',     (0,0), (-1,0), colors.white),
+                ('FONTNAME',      (0,0), (-1,0), "Helvetica-Bold"),
+                ('FONTNAME',      (0,1), (-1,1), "Helvetica-Bold"),
+                ('FONTSIZE',      (0,0), (-1,-1), 9),
+                ('ALIGN',         (0,0), (-1,-1), "CENTER"),
+                ('VALIGN',        (0,0), (-1,-1), "MIDDLE"),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.HexColor("#EFF6FF")]),
+                ('TOPPADDING',    (0,0), (-1,-1), 7),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 7),
+                ('GRID',          (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
+            ]))
+            story += [summary, Spacer(1, 6*mm)]
+
+            # Day-by-day
+            story.append(Paragraph("Day-by-Day Breakdown", H2))
+            story.append(Spacer(1, 2*mm))
+            month_abbr = ["Jan","Feb","Mar","Apr","May","Jun",
+                          "Jul","Aug","Sep","Oct","Nov","Dec"]
+            day_rows = [["Date", "Transactions", "Revenue", "Returns", "Net"]]
+            for d in range(1, days_in_mo + 1):
+                rev = day_rev.get(d, 0)
+                ret = day_ret.get(d, 0)
+                day_rows.append([
+                    f"{d:02d} {month_abbr[month-1]} {year}",
+                    str(day_txn.get(d, 0)),
+                    f"KES {rev:,.2f}",
+                    f"KES {ret:,.2f}",
+                    f"KES {rev - ret:,.2f}",
+                ])
+            day_tbl = Table(day_rows, colWidths=[35*mm, 25*mm, 35*mm, 35*mm, 35*mm])
+            day_tbl.setStyle(TableStyle([
+                ('BACKGROUND',    (0,0), (-1,0), colors.HexColor("#F3F4F6")),
+                ('FONTNAME',      (0,0), (-1,0), "Helvetica-Bold"),
+                ('FONTSIZE',      (0,0), (-1,-1), 8),
+                ('ALIGN',         (1,0), (-1,-1), "RIGHT"),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor("#FAFAFA")]),
+                ('TOPPADDING',    (0,0), (-1,-1), 5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('LEFTPADDING',   (0,0), (-1,-1), 6),
+                ('GRID',          (0,0), (-1,-1), 0.3, colors.HexColor("#E5E7EB")),
+            ]))
+            story += [day_tbl, Spacer(1, 6*mm)]
+
+            # Top products
+            story.append(Paragraph("Top Products", H2))
+            story.append(Spacer(1, 2*mm))
+            top_prods = sorted(prod_map.items(), key=lambda x: -x[1]["rev"])[:15]
+            prod_rows = [["Product", "Category", "Qty Sold", "Revenue"]]
+            for name, data in top_prods:
+                prod_rows.append([
+                    name, data["cat"],
+                    f"{data['qty']:g}",
+                    f"KES {data['rev']:,.2f}",
+                ])
+            prod_tbl = Table(prod_rows, colWidths=[70*mm, 35*mm, 25*mm, 35*mm])
+            prod_tbl.setStyle(TableStyle([
+                ('BACKGROUND',    (0,0), (-1,0), colors.HexColor("#F3F4F6")),
+                ('FONTNAME',      (0,0), (-1,0), "Helvetica-Bold"),
+                ('FONTSIZE',      (0,0), (-1,-1), 8),
+                ('ALIGN',         (2,0), (-1,-1), "RIGHT"),
+                ('ROWBACKGROUNDS',(0,1),(-1,-1), [colors.white, colors.HexColor("#FAFAFA")]),
+                ('TOPPADDING',    (0,0), (-1,-1), 5),
+                ('BOTTOMPADDING', (0,0), (-1,-1), 5),
+                ('LEFTPADDING',   (0,0), (-1,-1), 6),
+                ('GRID',          (0,0), (-1,-1), 0.3, colors.HexColor("#E5E7EB")),
+            ]))
+            story += [prod_tbl, Spacer(1, 4*mm)]
+
+            story.append(Paragraph(
+                f"Generated: {__import__('datetime').datetime.now().strftime('%d %b %Y %H:%M')}",
+                FTR
+            ))
+            doc.build(story)
+
+            import os
+            from PyQt6.QtCore import QTimer
+            toast = QLabel(f"  ✓  Saved: {os.path.basename(path)}", self)
+            toast.setStyleSheet("background:#059669; color:white; border-radius:9px; padding:12px 20px; font-size:13px; font-weight:bold;")
+            toast.adjustSize(); toast.setFixedHeight(44)
+            toast.move((self.width()-toast.width())//2, self.height()-70)
+            toast.show(); toast.raise_()
+            QTimer.singleShot(2800, toast.deleteLater)
+
+        except Exception as e:
+            logger.error("Monthly PDF error: %s", e)
 
     def _update_stat(self, card, value):
         for child in card.findChildren(QLabel):

@@ -109,85 +109,117 @@ class UserRow(QFrame):
         self.on_edit         = on_edit
         self.on_toggle       = on_toggle
         self.current_user_id = current_user_id
-        self.setFixedHeight(72)
+        self.setFixedHeight(64)
         self.setStyleSheet("""
-            QFrame {
-                background:white;
-                border-bottom:1px solid #F3F4F6;
-            }
-            QFrame:hover { background:#FAFAFA; }
+            QFrame { background:white; border-bottom:1px solid #F3F4F6; }
+            QFrame:hover { background:#F9FAFB; }
         """)
         self._build()
 
     def _build(self):
-        u = self.user_data
+        u      = self.user_data
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 0, 20, 0)
         layout.setSpacing(16)
 
-        # Avatar
+        # Avatar — circle, role-colored
+        role_lbl, role_fg, role_bg = ROLE_META.get(u["role"], ("?", "#374151", "#F3F4F6"))
         av = QLabel(u["full_name"][0].upper())
-        av.setFixedSize(38, 38)
+        av.setFixedSize(36, 36)
         av.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        role_fg, role_bg = ROLE_META.get(u["role"], ("", "#EFF6FF", "#1A3C6B"))[1:3]
         av.setStyleSheet(f"""
-            background:{role_bg};
-            color:{role_fg};
-            border-radius:19px;
-            font-size:15px; font-weight:bold;
+            background:{role_bg}; color:{role_fg};
+            border-radius:18px; font-size:14px; font-weight:bold;
         """)
 
-        # Info
+        # Name + @username stacked, no box
         info = QVBoxLayout()
-        info.setSpacing(3)
-        name = QLabel(u["full_name"])
-        name.setStyleSheet(f"""
-            font-size:13px; font-weight:bold;
-            color:{'#111827' if u['is_active'] else '#9CA3AF'};
-            background:transparent;
-        """)
+        info.setSpacing(2)
+        info.setContentsMargins(0, 0, 0, 0)
+        name_color = "#111827" if u["is_active"] else "#9CA3AF"
+        name  = QLabel(u["full_name"])
+        name.setStyleSheet(f"font-size:13px; font-weight:700; color:{name_color}; background:transparent;")
         uname = QLabel(f"@{u['username']}")
         uname.setStyleSheet("font-size:11px; color:#9CA3AF; background:transparent;")
         info.addWidget(name)
         info.addWidget(uname)
 
-        # Role badge
-        role_lbl, role_fg, role_bg = ROLE_META.get(u["role"], ("Unknown", "#374151", "#F3F4F6"))
-        role_badge = pill(role_lbl, role_fg, role_bg)
-        role_badge.setFixedWidth(76)
+        # Role pill — compact, no border
+        rp = QLabel(role_lbl)
+        rp.setFixedWidth(72)
+        rp.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        rp.setFixedHeight(22)
+        rp.setStyleSheet(f"""
+            color:{role_fg}; background:{role_bg};
+            border-radius:5px; font-size:11px; font-weight:700;
+        """)
 
-        # Status badge
+        # Status pill
         if u["is_active"]:
-            status = pill("Active", "#059669", "#ECFDF5")
+            sp = QLabel("Active")
+            sp.setStyleSheet("color:#065F46; background:#D1FAE5; border-radius:5px; font-size:11px; font-weight:700;")
         else:
-            status = pill("Inactive", "#9CA3AF", "#F3F4F6")
-        status.setFixedWidth(72)
+            sp = QLabel("Inactive")
+            sp.setStyleSheet("color:#6B7280; background:#F3F4F6; border-radius:5px; font-size:11px; font-weight:700;")
+        sp.setFixedWidth(62)
+        sp.setFixedHeight(22)
+        sp.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # Last login
+        # Last login — monospaced
+        from PyQt6.QtGui import QFont as _QFont
         ll = QLabel(u.get("last_login") or "Never")
+        ll.setFixedWidth(148)
         ll.setStyleSheet("font-size:11px; color:#9CA3AF; background:transparent;")
-        ll.setFixedWidth(150)
+        ll.setFont(_QFont("Courier New", 10))
 
-        # Buttons
-        is_self = u["id"] == self.current_user_id
-        edit_btn = solid_btn("Edit", "#EFF6FF", "#1A3C6B", "#DBEAFE", h=32, w=68, fs=12)
+        # Ghost action buttons
+        is_self  = u["id"] == self.current_user_id
+        edit_btn = QPushButton("Edit")
+        edit_btn.setFixedSize(60, 30)
+        edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        edit_btn.setStyleSheet("""
+            QPushButton {
+                background:transparent; color:#1A3C6B;
+                border:1px solid #DBEAFE; border-radius:7px;
+                font-size:12px; font-weight:600;
+            }
+            QPushButton:hover { background:#EFF6FF; }
+        """)
         edit_btn.clicked.connect(lambda: self.on_edit(self.user_data))
 
         if not is_self:
             if u["is_active"]:
-                tog = solid_btn("Deactivate", "#FEF2F2", "#DC2626", "#FEE2E2", h=32, w=96, fs=12)
+                tog = QPushButton("Deactivate")
+                tog.setStyleSheet("""
+                    QPushButton {
+                        background:transparent; color:#DC2626;
+                        border:1px solid #FECACA; border-radius:7px;
+                        font-size:12px; font-weight:600;
+                    }
+                    QPushButton:hover { background:#FEF2F2; }
+                """)
             else:
-                tog = solid_btn("Activate", "#ECFDF5", "#059669", "#D1FAE5", h=32, w=96, fs=12)
+                tog = QPushButton("Activate")
+                tog.setStyleSheet("""
+                    QPushButton {
+                        background:transparent; color:#059669;
+                        border:1px solid #A7F3D0; border-radius:7px;
+                        font-size:12px; font-weight:600;
+                    }
+                    QPushButton:hover { background:#ECFDF5; }
+                """)
+            tog.setFixedSize(88, 30)
+            tog.setCursor(Qt.CursorShape.PointingHandCursor)
             tog.clicked.connect(lambda: self.on_toggle(self.user_data))
         else:
             tog = QLabel("(You)")
             tog.setStyleSheet("font-size:11px; color:#9CA3AF; background:transparent;")
-            tog.setFixedWidth(96)
+            tog.setFixedWidth(88)
 
         layout.addWidget(av)
         layout.addLayout(info, 1)
-        layout.addWidget(role_badge)
-        layout.addWidget(status)
+        layout.addWidget(rp)
+        layout.addWidget(sp)
         layout.addWidget(ll)
         layout.addWidget(edit_btn)
         layout.addWidget(tog)
@@ -395,20 +427,21 @@ class UsersView(QWidget):
 
         # Column header
         col_hdr = QFrame()
-        col_hdr.setFixedHeight(38)
+        col_hdr.setFixedHeight(36)
         col_hdr.setStyleSheet("""
             background:#FAFAFA;
             border-radius:12px 12px 0 0;
-            border-bottom:1px solid #F3F4F6;
+            border-bottom:1.5px solid #E5E7EB;
         """)
         chl = QHBoxLayout(col_hdr)
         chl.setContentsMargins(20, 0, 20, 0)
         chl.setSpacing(16)
-        for txt, w in [("", 38), ("User", 0), ("Role", 76),
-                       ("Status", 72), ("Last Login", 150), ("", 172)]:
+        HDR_STYLE = ("font-size:10px; font-weight:700; color:#9CA3AF; "
+                     "background:transparent; letter-spacing:0.8px;")
+        for txt, w in [("", 36), ("USER", 0), ("ROLE", 72),
+                       ("STATUS", 62), ("LAST LOGIN", 148), ("ACTIONS", 160)]:
             lbl = QLabel(txt)
-            lbl.setStyleSheet("font-size:11px; font-weight:bold; color:#9CA3AF; "
-                              "background:transparent; letter-spacing:0.5px;")
+            lbl.setStyleSheet(HDR_STYLE)
             if w == 0:
                 chl.addWidget(lbl, 1)
             else:
